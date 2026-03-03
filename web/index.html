@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="description" content="Rover Control System - Offline ROS2 Web Interface">
+
+    <title>Rover Control</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="title">MARCH ROVER</h1>
+                <div class="connection-status" id="connection-status">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Disconnected</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main content -->
+        <main class="main-content">
+            <!-- Mode Indicator -->
+            <section class="mode-panel">
+                <div class="mode-indicator" id="mode-indicator">
+                    <span class="mode-icon">⏹</span>
+                    <span class="mode-text">DISARMED</span>
+                </div>
+            </section>
+
+            <!-- Telemetry Display Panel -->
+            <section class="telemetry-panel" aria-label="Telemetry Display">
+                <div class="telemetry-row">
+                    <span class="telemetry-label">linear: x</span>
+                    <span class="telemetry-value" id="linear-x">0.00</span>
+                </div>
+                <div class="telemetry-row">
+                    <span class="telemetry-label">angular: z</span>
+                    <span class="telemetry-value" id="angular-z">0.00</span>
+                </div>
+            </section>
+
+            <!-- Joystick Controls -->
+            <section class="joystick-panel" aria-label="Joystick Controls">
+                <div class="joystick-container">
+                    <!-- Linear X Joystick (Vertical: Up/Down) -->
+                    <div class="joystick-wrapper">
+                        <span class="joystick-label">LINEAR X</span>
+                        <div class="joystick-track vertical" id="joystick-linear">
+                            <div class="joystick-center-line"></div>
+                            <div class="joystick-thumb" id="thumb-linear"></div>
+                        </div>
+                        <div class="joystick-hints vertical-hints">
+                            <span>FWD</span>
+                            <span>BWD</span>
+                        </div>
+                    </div>
+
+                    <!-- Angular Z Joystick (Horizontal: Left/Right) -->
+                    <div class="joystick-wrapper">
+                        <span class="joystick-label">ANGULAR Z</span>
+                        <div class="joystick-track horizontal" id="joystick-angular">
+                            <div class="joystick-center-line"></div>
+                            <div class="joystick-thumb" id="thumb-angular"></div>
+                        </div>
+                        <div class="joystick-hints horizontal-hints">
+                            <span>LEFT</span>
+                            <span>RIGHT</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Mode Toggle Button -->
+            <section class="action-panel">
+                <button class="mode-btn" id="btn-mode" aria-label="Toggle Armed/Disarmed Mode">
+                    <span class="mode-btn-text">DISARMED</span>
+                </button>
+            </section>
+
+            <!-- Emergency Stop -->
+            <section class="emergency-section">
+                <button class="emergency-btn" id="btn-emergency" aria-label="Emergency Stop">
+                    <span class="emergency-icon">🛑</span>
+                    <span class="emergency-text">EMERGENCY STOP</span>
+                </button>
+            </section>
+
+            <!-- Keyboard Help -->
+            <section class="keyboard-help">
+                <div class="help-toggle" id="help-toggle">
+                    <span>Keyboard Shortcuts</span>
+                    <svg class="help-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M6 9l6 6 6-6" />
+                    </svg>
+                </div>
+                <div class="help-content" id="help-content">
+                    <div class="key-group"><kbd>W</kbd> / <kbd>↑</kbd> Forward</div>
+                    <div class="key-group"><kbd>S</kbd> / <kbd>↓</kbd> Backward</div>
+                    <div class="key-group"><kbd>A</kbd> / <kbd>←</kbd> Left</div>
+                    <div class="key-group"><kbd>D</kbd> / <kbd>→</kbd> Right</div>
+                    <div class="key-group"><kbd>Space</kbd> Toggle Mode</div>
+                    <div class="key-group"><kbd>Esc</kbd> E-Stop</div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="app.js"></script>
+</body>
+
+</html>
