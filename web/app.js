@@ -5,7 +5,7 @@
 
     // basic setup
     const CONFIG = {
-        WS_URL: `ws://${window.location.hostname || 'localhost'}:8765`,
+        ROSBRIDGE_URL: `ws://${window.location.hostname || 'localhost'}:9090`,
         RECONNECT_INTERVAL: 3000,
         MAX_ANGULAR_SPEED: 0.49,
         // fast/slow mode caps
@@ -23,7 +23,9 @@
         connected: false,
         speedMode: 'slow',  // 'slow' or 'fast'
         joystickStyle: 'unified', // 'split' or 'unified'
-        ws: null,
+        ros: null,
+        cmdVelPub: null,
+        cmdVelSub: null,
         reconnectTimer: null,
         dragging: { linear: false, angular: false }
     };
@@ -34,6 +36,7 @@
     }
 
     // --- DOM Elements ---
+    const elements = {};
 
     function initializeElements() {
         elements.linearX = document.getElementById('linear-x');
@@ -64,53 +67,65 @@
         elements.thumb2D = document.getElementById('thumb-2d');
     }
 
-    // --- Websocket setup ---
+    // --- ROSLIB setup ---
 
     function connectWebSocket() {
-        if (state.ws && state.ws.readyState === WebSocket.OPEN) return;
+        if (state.ros && state.ros.isConnected) return;
 
         try {
-            state.ws = new WebSocket(CONFIG.WS_URL);
-            state.ws.onopen = handleWebSocketOpen;
-            state.ws.onclose = handleWebSocketClose;
-            state.ws.onerror = handleWebSocketError;
-            state.ws.onmessage = handleWebSocketMessage;
+            state.ros = new ROSLIB.Ros({
+                url: CONFIG.ROSBRIDGE_URL
+            });
+
+            state.ros.on('connection', handleWebSocketOpen);
+            state.ros.on('close', handleWebSocketClose);
+            state.ros.on('error', handleWebSocketError);
         } catch (error) {
-            console.error('WebSocket connection failed:', error);
+            console.error('ROS connection failed:', error);
             scheduleReconnect();
         }
     }
 
-    function handleWebSocketOpen() {
-        console.log('🔗 WebSocket connected');
-        state.connected = true;
-        clearTimeout(state.reconnectTimer);
-        sendMessage({ mode: state.mode });
+    function setupRosTopics() {
+        // Publisher
+        state.cmdVelPub = new ROSLIB.Topic({
+            ros: state.ros,
+            name: '/cmd_vel',
+            messageType: 'geometry_msgs/Twist'
+        });
+
+        // Subscriber (Telemetry feedback)
+        state.cmdVelSub = new ROSLIB.Topic({
+            ros: state.ros,
+            name: '/cmd_vel',
+            messageType: 'geometry_msgs/Twist'
+        });
+
+        state.cmdVelSub.subscribe(handleTelemetryMessage);
     }
 
-    function handleWebSocketClose(event) {
-        console.log('🔌 WebSocket disconnected', event.code, event.reason);
+    function handleWebSocketOpen() {
+        console.log('🔗 Connected to rosbridge');
+        state.connected = true;
+        clearTimeout(state.reconnectTimer);
+        setupRosTopics();
+    }
+
+    function handleWebSocketClose() {
+        console.log('🔌 Disconnected from rosbridge');
         state.connected = false;
         scheduleReconnect();
     }
 
     function handleWebSocketError(error) {
-        console.error('❌ WebSocket error:', error);
+        console.error('❌ ROS Error:', error);
         state.connected = false;
     }
 
-    function handleWebSocketMessage(event) {
-        try {
-            const data = JSON.parse(event.data);
-            if (data.error) { console.error('Server error:', data.error); return; }
-
-            if (typeof data.linear_x === 'number') updateTelemetry('linear', data.linear_x);
-            if (typeof data.angular_y === 'number') updateTelemetry('angularY', data.angular_y);
-            if (typeof data.angular_z === 'number') updateTelemetry('angularZ', data.angular_z);
-            if (data.mode) updateModeDisplay(data.mode);
-        } catch (error) {
-            console.error('Failed to parse message:', error);
-        }
+    function handleTelemetryMessage(msg) {
+        updateTelemetry('linear', msg.linear.x);
+        updateTelemetry('angularY', msg.angular.y);
+        updateTelemetry('angularZ', msg.angular.z);
     }
 
     function scheduleReconnect() {
@@ -122,10 +137,21 @@
         }, CONFIG.RECONNECT_INTERVAL);
     }
 
-    function sendMessage(data) {
-        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-            state.ws.send(JSON.stringify(data));
+    function publishTwist(linear_x, angular_y, angular_z) {
+        if (!state.connected || !state.cmdVelPub) return;
+
+        // Safety guard: do not publish if not ARMED
+        if (state.mode !== 'auto') {
+            linear_x = 0;
+            angular_y = 0;
+            angular_z = 0;
         }
+
+        const twist = new ROSLIB.Message({
+            linear: { x: linear_x, y: 0.0, z: 0.0 },
+            angular: { x: 0.0, y: angular_y, z: angular_z }
+        });
+        state.cmdVelPub.publish(twist);
     }
 
     // --- UI Update stuff ---
@@ -180,7 +206,7 @@
         const maxLin = getMaxLinear();
         state.linearX = clamp(linear, -maxLin, maxLin);
         state.angularZ = clamp(angular, -CONFIG.MAX_ANGULAR_SPEED, CONFIG.MAX_ANGULAR_SPEED);
-        sendMessage({ linear: state.linearX, angular: state.angularZ });
+        publishTwist(state.linearX, 0.0, state.angularZ);
         updateTelemetry('linear', state.linearX);
         updateTelemetry('angularZ', state.angularZ);
     }
@@ -193,9 +219,11 @@
 
     function sendSpecialCommand() {
         if (specialCmdMode === 'diff') {
-            sendMessage({ differential: true });
+            // Hijacks angular.y in Twist for UI
+            publishTwist(0.0, 404.0, 0.0);
         } else {
-            sendMessage({ rotate_360: true });
+            // Hijacks angular.y in Twist for UI
+            publishTwist(0.0, 200.0, 0.0);
         }
     }
 
@@ -230,11 +258,12 @@
         if (state.mode !== 'auto') return;
 
         // cancel whatever was running before
+        // The release zeroes everything out automatically, so we'll just switch the mode
         if (specialCmdMode === 'diff') {
-            sendMessage({ differential: false });
+            publishTwist(0.0, 0.0, 0.0);
             specialCmdMode = '360';
         } else {
-            sendMessage({ rotate_360: false });
+            publishTwist(0.0, 0.0, 0.0);
             specialCmdMode = 'diff';
         }
 
@@ -252,7 +281,7 @@
         if (state.linearX !== 0) {
             const maxLin = getMaxLinear();
             state.linearX = clamp(state.linearX, -maxLin, maxLin);
-            sendMessage({ linear: state.linearX, angular: state.angularZ });
+            publishTwist(state.linearX, 0.0, state.angularZ);
             updateTelemetry('linear', state.linearX);
         }
         console.log(`⚡ Speed mode: ${state.speedMode.toUpperCase()}`);
@@ -529,7 +558,12 @@
         state.mode = newMode;
         state.linearX = 0;
         state.angularZ = 0;
-        sendMessage({ mode: newMode });
+
+        // When switching to manual, ensure motors stop immediately
+        if (newMode === 'manual') {
+            publishTwist(0.0, 0.0, 0.0);
+        }
+
         updateModeDisplay(newMode);
         resetThumbs();
     }
@@ -555,6 +589,51 @@
 
     // ─── Event Listeners ─────────────────────────────────────────────────────
 
+    const keysDown = new Set();
+    const keyMap = {
+        'KeyW': 'up', 'ArrowUp': 'up',
+        'KeyS': 'down', 'ArrowDown': 'down',
+        'KeyA': 'left', 'ArrowLeft': 'left',
+        'KeyD': 'right', 'ArrowRight': 'right'
+    };
+
+    function recalcFromKeys() {
+        let lin = 0, ang = 0;
+        const maxLin = getMaxLinear();
+        if (keysDown.has('up')) lin += maxLin;
+        if (keysDown.has('down')) lin -= maxLin;
+        if (keysDown.has('left')) ang += CONFIG.MAX_ANGULAR_SPEED;
+        if (keysDown.has('right')) ang -= CONFIG.MAX_ANGULAR_SPEED;
+
+        state.linearX = clamp(lin, -maxLin, maxLin);
+        state.angularZ = clamp(ang, -CONFIG.MAX_ANGULAR_SPEED, CONFIG.MAX_ANGULAR_SPEED);
+
+        publishTwist(state.linearX, 0.0, state.angularZ);
+        updateTelemetry('linear', state.linearX);
+        updateTelemetry('angularZ', state.angularZ);
+    }
+
+    function handleKeyDown(event) {
+        if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
+        if (event.code === 'Space') { event.preventDefault(); toggleMode(); return; }
+
+        const dir = keyMap[event.code];
+        if (dir && !event.repeat && state.mode === 'auto') {
+            event.preventDefault();
+            keysDown.add(dir);
+            recalcFromKeys();
+        }
+    }
+
+    function handleKeyUp(event) {
+        const dir = keyMap[event.code];
+        if (dir) {
+            event.preventDefault();
+            keysDown.delete(dir);
+            recalcFromKeys();
+        }
+    }
+
     function setupEventListeners() {
         if (elements.modeBtn) elements.modeBtn.addEventListener('click', toggleMode);
 
@@ -577,17 +656,23 @@
                     elements.joystickUnified.style.display = isSplit ? 'none' : 'flex';
                 }
                 // Send stop command just in case any drags are active
-                sendVelocity(0, 0);
+                publishTwist(0.0, 0.0, 0.0);
                 resetThumbs();
             });
         }
+
+        document.addEventListener('keydown', handleKeyDown);
+        document.addEventListener('keyup', handleKeyUp);
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && !state.connected) connectWebSocket();
         });
 
         window.addEventListener('beforeunload', () => {
-            if (state.ws) { sendMessage({ stop: true }); state.ws.close(); }
+            if (state.connected) {
+                publishTwist(0.0, 0.0, 0.0);
+                state.ros.close();
+            }
         });
     }
 
@@ -637,7 +722,7 @@
         updateSpeedModeDisplay();
 
         console.log('✅ Rover Control System ready');
-        console.log('📡 Connecting to:', CONFIG.WS_URL);
+        console.log('📡 Connecting to:', CONFIG.ROSBRIDGE_URL);
     }
 
     if (document.readyState === 'loading') {
