@@ -1,32 +1,16 @@
-/**
- * ╔══════════════════════════════════════════════════════════════════════════════╗
- * ║              MARCH ROVER - Frontend Control Application                      ║
- * ║                   Joystick Edition - Slide to Drive! 🎮                      ║
- * ╚══════════════════════════════════════════════════════════════════════════════╝
- *
- * Two slider joysticks:
- *   - Vertical slider: Controls linear.x (forward/backward)
- *   - Horizontal slider: Controls angular.z (left/right turn)
- *
- * Keyboard controls still work (WASD / Arrows / Space / Esc).
- *
- * Author: Abiral Saba (@Abiralsaba)
- * Project: MARCH ROVER Controller
- * License: MIT
- */
+
 
 (function () {
     'use strict';
 
-    // Configuration
+    // basic setup
     const CONFIG = {
         WS_URL: `ws://${window.location.hostname || 'localhost'}:8765`,
         RECONNECT_INTERVAL: 3000,
-        MAX_LINEAR_SPEED: 1.0,
-        MAX_ANGULAR_SPEED: 1.0,
-        ACCELERATION_STEP: 0.02,
-        DECELERATION_STEP: 0.3,
-        RAMP_INTERVAL: 50,
+        MAX_ANGULAR_SPEED: 0.49,
+        // fast/slow mode caps
+        SLOW_MAX_LINEAR: 0.5,
+        FAST_MAX_LINEAR: 1.0,
         SNAP_BACK_MS: 200
     };
 
@@ -34,48 +18,56 @@
     const state = {
         mode: 'manual',
         linearX: 0,
+        angularY: 0,
         angularZ: 0,
-        targetLinearX: 0,
-        targetAngularZ: 0,
         connected: false,
-        emergencyStop: false,
+        speedMode: 'slow',  // 'slow' or 'fast'
+        joystickStyle: 'unified', // 'split' or 'unified'
         ws: null,
         reconnectTimer: null,
-        rampingInterval: null,
         dragging: { linear: false, angular: false }
     };
 
-    // DOM Elements
-    const elements = {};
+    // returns max speed based on whether fast mode is on
+    function getMaxLinear() {
+        return state.speedMode === 'fast' ? CONFIG.FAST_MAX_LINEAR : CONFIG.SLOW_MAX_LINEAR;
+    }
 
-    // ─── DOM Init ────────────────────────────────────────────────────────────
+    // --- DOM Elements ---
 
     function initializeElements() {
-        elements.connectionStatus = document.getElementById('connection-status');
-        elements.statusText = elements.connectionStatus?.querySelector('.status-text');
         elements.linearX = document.getElementById('linear-x');
+        elements.angularY = document.getElementById('angular-y');
         elements.angularZ = document.getElementById('angular-z');
         elements.modeIndicator = document.getElementById('mode-indicator');
         elements.modeIcon = elements.modeIndicator?.querySelector('.mode-icon');
         elements.modeText = elements.modeIndicator?.querySelector('.mode-text');
         elements.modeBtn = document.getElementById('btn-mode');
         elements.modeBtnText = elements.modeBtn?.querySelector('.mode-btn-text');
-        elements.emergencyBtn = document.getElementById('btn-emergency');
-        elements.helpToggle = document.getElementById('help-toggle');
-        elements.helpContent = document.getElementById('help-content');
+
+        // New buttons
+        elements.btnSpecialCmd = document.getElementById('btn-special-cmd');
+        elements.btnSpeedMode = document.getElementById('btn-speed-mode');
+        elements.speedModeText = elements.btnSpeedMode?.querySelector('.speed-mode-text');
 
         // Joystick elements
+        elements.joystickSplit = document.getElementById('joystick-split');
+        elements.joystickUnified = document.getElementById('joystick-unified');
+        elements.styleToggle = document.getElementById('joystick-style-toggle');
+
         elements.joystickLinear = document.getElementById('joystick-linear');
         elements.thumbLinear = document.getElementById('thumb-linear');
         elements.joystickAngular = document.getElementById('joystick-angular');
         elements.thumbAngular = document.getElementById('thumb-angular');
+
+        elements.joystick2D = document.getElementById('joystick-2d');
+        elements.thumb2D = document.getElementById('thumb-2d');
     }
 
-    // ─── WebSocket ───────────────────────────────────────────────────────────
+    // --- Websocket setup ---
 
     function connectWebSocket() {
         if (state.ws && state.ws.readyState === WebSocket.OPEN) return;
-        updateConnectionStatus('connecting');
 
         try {
             state.ws = new WebSocket(CONFIG.WS_URL);
@@ -92,7 +84,6 @@
     function handleWebSocketOpen() {
         console.log('🔗 WebSocket connected');
         state.connected = true;
-        updateConnectionStatus('connected');
         clearTimeout(state.reconnectTimer);
         sendMessage({ mode: state.mode });
     }
@@ -100,14 +91,12 @@
     function handleWebSocketClose(event) {
         console.log('🔌 WebSocket disconnected', event.code, event.reason);
         state.connected = false;
-        updateConnectionStatus('disconnected');
         scheduleReconnect();
     }
 
     function handleWebSocketError(error) {
         console.error('❌ WebSocket error:', error);
         state.connected = false;
-        updateConnectionStatus('disconnected');
     }
 
     function handleWebSocketMessage(event) {
@@ -116,12 +105,9 @@
             if (data.error) { console.error('Server error:', data.error); return; }
 
             if (typeof data.linear_x === 'number') updateTelemetry('linear', data.linear_x);
-            if (typeof data.angular_z === 'number') updateTelemetry('angular', data.angular_z);
+            if (typeof data.angular_y === 'number') updateTelemetry('angularY', data.angular_y);
+            if (typeof data.angular_z === 'number') updateTelemetry('angularZ', data.angular_z);
             if (data.mode) updateModeDisplay(data.mode);
-            if (typeof data.emergency_stop === 'boolean') {
-                state.emergencyStop = data.emergency_stop;
-                updateEmergencyDisplay();
-            }
         } catch (error) {
             console.error('Failed to parse message:', error);
         }
@@ -142,22 +128,17 @@
         }
     }
 
-    // ─── UI Updates ──────────────────────────────────────────────────────────
-
-    function updateConnectionStatus(status) {
-        if (!elements.connectionStatus) return;
-        elements.connectionStatus.classList.remove('connected', 'connecting', 'disconnected');
-        elements.connectionStatus.classList.add(status);
-        const texts = { connected: 'Connected', connecting: 'Connecting...', disconnected: 'Disconnected' };
-        if (elements.statusText) elements.statusText.textContent = texts[status] || 'Unknown';
-    }
+    // --- UI Update stuff ---
 
     function updateTelemetry(type, value) {
         const fmt = value.toFixed(2);
         if (type === 'linear' && elements.linearX) {
             elements.linearX.textContent = fmt;
             state.linearX = value;
-        } else if (type === 'angular' && elements.angularZ) {
+        } else if (type === 'angularY' && elements.angularY) {
+            elements.angularY.textContent = fmt;
+            state.angularY = value;
+        } else if (type === 'angularZ' && elements.angularZ) {
             elements.angularZ.textContent = fmt;
             state.angularZ = value;
         }
@@ -176,79 +157,148 @@
         // Update joystick enabled state visually
         const tracks = document.querySelectorAll('.joystick-track');
         tracks.forEach(t => t.classList.toggle('disabled', !isArmed));
-    }
 
-    function updateEmergencyDisplay() {
-        if (elements.emergencyBtn) {
-            elements.emergencyBtn.classList.toggle('active', state.emergencyStop);
+        // Disable other buttons when disarmed
+        if (elements.btnSpecialCmd) elements.btnSpecialCmd.disabled = !isArmed;
+        if (elements.btnSpeedMode) elements.btnSpeedMode.disabled = !isArmed;
+        if (elements.styleToggle) elements.styleToggle.disabled = !isArmed;
+
+        // If we just disarmed, stop the DIFF interval
+        if (!isArmed && specialCmdInterval) {
+            clearInterval(specialCmdInterval);
+            specialCmdInterval = null;
+        } else if (isArmed && specialCmdMode && !specialCmdInterval) {
+            // Resume if re-armed
+            startSpecialInterval();
         }
     }
 
-    // ─── Velocity Ramping ────────────────────────────────────────────────────
+    // --- Firing commands ---
 
-    function startRampingLoop() {
-        if (state.rampingInterval) return;
-
-        state.rampingInterval = setInterval(() => {
-            let changed = false;
-
-            // Ramp linear
-            const ld = state.targetLinearX - state.linearX;
-            if (Math.abs(ld) > 0.01) {
-                // Fast decel only when joystick is released (target = 0)
-                const releasing = state.targetLinearX === 0;
-                const step = releasing ? CONFIG.DECELERATION_STEP : CONFIG.ACCELERATION_STEP;
-                state.linearX = ld > 0
-                    ? Math.min(state.linearX + step, state.targetLinearX, CONFIG.MAX_LINEAR_SPEED)
-                    : Math.max(state.linearX - step, state.targetLinearX, -CONFIG.MAX_LINEAR_SPEED);
-                changed = true;
-            } else if (state.linearX !== state.targetLinearX) {
-                state.linearX = state.targetLinearX;
-                changed = true;
-            }
-
-            // Ramp angular
-            const ad = state.targetAngularZ - state.angularZ;
-            if (Math.abs(ad) > 0.01) {
-                const releasing = state.targetAngularZ === 0;
-                const step = releasing ? CONFIG.DECELERATION_STEP : CONFIG.ACCELERATION_STEP;
-                state.angularZ = ad > 0
-                    ? Math.min(state.angularZ + step, state.targetAngularZ, CONFIG.MAX_ANGULAR_SPEED)
-                    : Math.max(state.angularZ - step, state.targetAngularZ, -CONFIG.MAX_ANGULAR_SPEED);
-                changed = true;
-            } else if (state.angularZ !== state.targetAngularZ) {
-                state.angularZ = state.targetAngularZ;
-                changed = true;
-            }
-
-            sendMessage({ linear: state.linearX, angular: state.angularZ });
-            if (changed) {
-                updateTelemetry('linear', state.linearX);
-                updateTelemetry('angular', state.angularZ);
-            }
-        }, CONFIG.RAMP_INTERVAL);
+    // fire velocity straight away (used by keyboard + joystick)
+    function sendVelocity(linear, angular) {
+        const maxLin = getMaxLinear();
+        state.linearX = clamp(linear, -maxLin, maxLin);
+        state.angularZ = clamp(angular, -CONFIG.MAX_ANGULAR_SPEED, CONFIG.MAX_ANGULAR_SPEED);
+        sendMessage({ linear: state.linearX, angular: state.angularZ });
+        updateTelemetry('linear', state.linearX);
+        updateTelemetry('angularZ', state.angularZ);
     }
 
-    // ─── Joystick Drag Logic ─────────────────────────────────────────────────
+    // --- Special Modes ---
+
+    // toggle state: diff -> 360
+    let specialCmdInterval = null;
+    let specialCmdMode = 'diff'; // 'diff' or '360'
+
+    function sendSpecialCommand() {
+        if (specialCmdMode === 'diff') {
+            sendMessage({ differential: true });
+        } else {
+            sendMessage({ rotate_360: true });
+        }
+    }
+
+    function startSpecialInterval() {
+        if (specialCmdInterval) clearInterval(specialCmdInterval);
+        sendSpecialCommand();
+        specialCmdInterval = setInterval(sendSpecialCommand, 100);
+    }
+
+    function updateSpecialCmdUI() {
+        const btn = elements.btnSpecialCmd;
+        if (!btn) return;
+        const iconEl = btn.querySelector('.special-btn-icon');
+        const textEl = btn.querySelector('.special-btn-text');
+        btn.classList.remove('mode-diff', 'mode-360');
+
+        if (specialCmdMode === 'diff') {
+            btn.classList.add('held', 'mode-diff');
+            if (iconEl) iconEl.textContent = '↔️';
+            if (textEl) textEl.textContent = 'DIFF ON';
+            updateTelemetry('angularY', 404);
+        } else {
+            btn.classList.add('held', 'mode-360');
+            if (iconEl) iconEl.textContent = '🔄';
+            if (textEl) textEl.textContent = '360° ON';
+            updateTelemetry('angularY', 200);
+        }
+    }
+
+    // toggles between diff and 360 mode
+    function toggleSpecialCommand() {
+        if (state.mode !== 'auto') return;
+
+        // cancel whatever was running before
+        if (specialCmdMode === 'diff') {
+            sendMessage({ differential: false });
+            specialCmdMode = '360';
+        } else {
+            sendMessage({ rotate_360: false });
+            specialCmdMode = 'diff';
+        }
+
+        updateSpecialCmdUI();
+        startSpecialInterval();
+    }
+
+    // flip between slow and fast mode
+    function toggleSpeedMode() {
+        if (state.mode !== 'auto') return;
+        state.speedMode = state.speedMode === 'slow' ? 'fast' : 'slow';
+        updateSpeedModeDisplay();
+
+        // recalculate boundaries if we're currently holding the stick
+        if (state.linearX !== 0) {
+            const maxLin = getMaxLinear();
+            state.linearX = clamp(state.linearX, -maxLin, maxLin);
+            sendMessage({ linear: state.linearX, angular: state.angularZ });
+            updateTelemetry('linear', state.linearX);
+        }
+        console.log(`⚡ Speed mode: ${state.speedMode.toUpperCase()}`);
+    }
+
+    function updateSpeedModeDisplay() {
+        const isFast = state.speedMode === 'fast';
+        if (elements.btnSpeedMode) {
+            elements.btnSpeedMode.classList.toggle('fast', isFast);
+        }
+        if (elements.speedModeText) {
+            elements.speedModeText.textContent = isFast ? 'FAST MODE' : 'SLOW MODE';
+        }
+
+        // change the emoji depending on the mode
+        const iconEl = elements.btnSpeedMode?.querySelector('.special-btn-icon');
+        if (iconEl) {
+            iconEl.textContent = isFast ? '⚡' : '🐢';
+        }
+    }
+
+    // --- Joystick Math & Drags ---
 
     function clamp(v, min, max) {
         return Math.max(min, Math.min(max, v));
     }
 
-    /**
-     * Convert a pointer position to a normalised value (-1 … +1).
-     * Vertical: top = +1 (forward), bottom = -1 (backward).
-     * Horizontal: left = +1 (angular positive = turn left), right = -1.
-     */
+    // maps pointer position to a -1 to +1 range
+    // vertical: +1 = fwd, -1 = bwd
+    // horizontal: +1 = left, -1 = right
     function pointerToValue(track, clientX, clientY, axis) {
         const rect = track.getBoundingClientRect();
+        let rawRatio;
+
         if (axis === 'vertical') {
-            const ratio = (clientY - rect.top) / rect.height;
-            return clamp(1 - 2 * ratio, -1, 1);
+            rawRatio = (clientY - rect.top) / rect.height;
         } else {
-            const ratio = (clientX - rect.left) / rect.width;
-            return clamp(1 - 2 * ratio, -1, 1);
+            rawRatio = (clientX - rect.left) / rect.width;
         }
+
+        // Proportional value (-1 to 1), smooth like original
+        const val = clamp(1 - 2 * rawRatio, -1, 1);
+
+        // Small deadzone to prevent accidental drift
+        if (Math.abs(val) < 0.05) return 0;
+        return val;
     }
 
     /** Position the thumb element to reflect a value (-1 … +1). */
@@ -269,7 +319,10 @@
         let activeTouchId = null;   // track which finger owns this joystick
 
         function start(clientX, clientY) {
-            if (state.mode !== 'auto' || state.emergencyStop) return;
+            if (state.joystickStyle !== 'split') return;
+            if (state.mode !== 'auto') return;
+            // Block linear joystick when 360° mode is active
+            if (axis === 'vertical' && specialCmdMode === '360') return;
             dragging = true;
             state.dragging[axis === 'vertical' ? 'linear' : 'angular'] = true;
             thumbEl.classList.add('active');
@@ -296,6 +349,12 @@
             setThumbPosition(thumbEl, trackEl, 0, axis);
             setTimeout(() => { thumbEl.style.transition = ''; }, CONFIG.SNAP_BACK_MS);
             onUpdate(0);
+            // Instantly send zero when released
+            if (axis === 'vertical') {
+                sendVelocity(0, state.angularZ);
+            } else {
+                sendVelocity(state.linearX, 0);
+            }
         }
 
         // Mouse
@@ -348,33 +407,131 @@
         setThumbPosition(thumbEl, trackEl, 0, axis);
     }
 
+    // ─── Unified 2D Joystick Logic ──────────────────────────────────────────
+
+    function setup2DJoystick(trackEl, thumbEl, onUpdate) {
+        let dragging = false;
+        let activeTouchId = null;
+
+        function start(clientX, clientY) {
+            if (state.joystickStyle !== 'unified') return;
+            if (state.mode !== 'auto') return;
+            dragging = true;
+            state.dragging.linear = true;
+            state.dragging.angular = true;
+            thumbEl.classList.add('active');
+            trackEl.classList.add('active');
+            move(clientX, clientY);
+        }
+
+        function move(clientX, clientY) {
+            if (!dragging) return;
+            const rect = trackEl.getBoundingClientRect();
+            const radius = rect.width / 2;
+            const centerX = rect.left + radius;
+            const centerY = rect.top + radius;
+
+            // Distance from center in pixels
+            let dx = clientX - centerX;
+            let dy = centerY - clientY; // Invert Y: up = positive
+
+            // Constrain to circle (like a PS4 analog stick)
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > radius) {
+                dx = (dx / dist) * radius;
+                dy = (dy / dist) * radius;
+            }
+
+            // Proportional output: -1 to 1
+            let propX = dx / radius;  // right = positive (angular)
+            let propY = dy / radius;  // up = positive (linear)
+
+            // Small deadzone (5%) to prevent drift
+            const DEADZONE = 0.05;
+            if (Math.abs(propX) < DEADZONE) propX = 0;
+            if (Math.abs(propY) < DEADZONE) propY = 0;
+
+            // When 360° mode is active, disable linear (Y) axis
+            if (specialCmdMode === '360') {
+                propY = 0;
+                dy = 0;
+            }
+
+            // Smooth visual thumb position (constrained to circle)
+            const visualX = 50 + (dx / radius) * 50;
+            const visualY = 50 - (dy / radius) * 50;
+            thumbEl.style.left = `${visualX}%`;
+            thumbEl.style.top = `${visualY}%`;
+
+            onUpdate(propY, -propX); // linear (Y), angular (X inverted: left=positive)
+        }
+
+        function end() {
+            if (!dragging) return;
+            dragging = false;
+            activeTouchId = null;
+            state.dragging.linear = false;
+            state.dragging.angular = false;
+            thumbEl.classList.remove('active');
+            trackEl.classList.remove('active');
+
+            // Snap center
+            thumbEl.style.transition = `top ${CONFIG.SNAP_BACK_MS}ms ease, left ${CONFIG.SNAP_BACK_MS}ms ease`;
+            thumbEl.style.left = '50%';
+            thumbEl.style.top = '50%';
+            setTimeout(() => { thumbEl.style.transition = ''; }, CONFIG.SNAP_BACK_MS);
+
+            onUpdate(0, 0);
+            sendVelocity(0, 0);
+        }
+
+        trackEl.addEventListener('mousedown', (e) => { e.preventDefault(); start(e.clientX, e.clientY); });
+        window.addEventListener('mousemove', (e) => move(e.clientX, e.clientY));
+        window.addEventListener('mouseup', () => end());
+
+        trackEl.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const t = e.changedTouches[0];
+            activeTouchId = t.identifier;
+            start(t.clientX, t.clientY);
+        }, { passive: false });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!dragging || activeTouchId === null) return;
+            for (let i = 0; i < e.touches.length; i++) {
+                if (e.touches[i].identifier === activeTouchId) {
+                    move(e.touches[i].clientX, e.touches[i].clientY);
+                    return;
+                }
+            }
+        }, { passive: false });
+
+        const handleTouchEnd = (e) => {
+            if (activeTouchId === null) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                if (e.changedTouches[i].identifier === activeTouchId) {
+                    end();
+                    return;
+                }
+            }
+        };
+        window.addEventListener('touchend', handleTouchEnd);
+        window.addEventListener('touchcancel', handleTouchEnd);
+
+        thumbEl.style.left = '50%';
+        thumbEl.style.top = '50%';
+    }
+
     // ─── Mode / Emergency ────────────────────────────────────────────────────
 
     function toggleMode() {
         const newMode = state.mode === 'manual' ? 'auto' : 'manual';
         state.mode = newMode;
-        state.targetLinearX = 0;
-        state.targetAngularZ = 0;
+        state.linearX = 0;
+        state.angularZ = 0;
         sendMessage({ mode: newMode });
         updateModeDisplay(newMode);
         resetThumbs();
-    }
-
-    function triggerEmergencyStop() {
-        state.emergencyStop = true;
-        state.targetLinearX = 0;
-        state.targetAngularZ = 0;
-        state.mode = 'manual';
-        sendMessage({ emergency_stop: true });
-        updateEmergencyDisplay();
-        updateModeDisplay('manual');
-        resetThumbs();
-    }
-
-    function releaseEmergencyStop() {
-        state.emergencyStop = false;
-        sendMessage({ emergency_stop: false });
-        updateEmergencyDisplay();
     }
 
     function resetThumbs() {
@@ -388,48 +545,11 @@
             setThumbPosition(elements.thumbAngular, elements.joystickAngular, 0, 'horizontal');
             setTimeout(() => { elements.thumbAngular.style.transition = ''; }, CONFIG.SNAP_BACK_MS);
         }
-    }
-
-    // ─── Keyboard Controls ───────────────────────────────────────────────────
-
-    const keysDown = new Set();
-
-    function recalcTargetsFromKeys() {
-        let lin = 0, ang = 0;
-        if (keysDown.has('up'))    lin += 1;
-        if (keysDown.has('down'))  lin -= 1;
-        if (keysDown.has('left'))  ang += 0.5;
-        if (keysDown.has('right')) ang -= 0.5;
-        state.targetLinearX = clamp(lin, -CONFIG.MAX_LINEAR_SPEED, CONFIG.MAX_LINEAR_SPEED);
-        state.targetAngularZ = clamp(ang, -CONFIG.MAX_ANGULAR_SPEED, CONFIG.MAX_ANGULAR_SPEED);
-    }
-
-    const keyMap = {
-        'KeyW': 'up', 'ArrowUp': 'up',
-        'KeyS': 'down', 'ArrowDown': 'down',
-        'KeyA': 'left', 'ArrowLeft': 'left',
-        'KeyD': 'right', 'ArrowRight': 'right'
-    };
-
-    function handleKeyDown(event) {
-        if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
-        if (event.code === 'Space') { event.preventDefault(); toggleMode(); return; }
-        if (event.code === 'Escape') { event.preventDefault(); triggerEmergencyStop(); return; }
-
-        const dir = keyMap[event.code];
-        if (dir && !event.repeat && state.mode === 'auto' && !state.emergencyStop) {
-            event.preventDefault();
-            keysDown.add(dir);
-            recalcTargetsFromKeys();
-        }
-    }
-
-    function handleKeyUp(event) {
-        const dir = keyMap[event.code];
-        if (dir) {
-            event.preventDefault();
-            keysDown.delete(dir);
-            recalcTargetsFromKeys();
+        if (elements.thumb2D && elements.joystick2D) {
+            elements.thumb2D.style.transition = `top ${CONFIG.SNAP_BACK_MS}ms ease, left ${CONFIG.SNAP_BACK_MS}ms ease`;
+            elements.thumb2D.style.left = '50%';
+            elements.thumb2D.style.top = '50%';
+            setTimeout(() => { elements.thumb2D.style.transition = ''; }, CONFIG.SNAP_BACK_MS);
         }
     }
 
@@ -438,21 +558,29 @@
     function setupEventListeners() {
         if (elements.modeBtn) elements.modeBtn.addEventListener('click', toggleMode);
 
-        if (elements.emergencyBtn) {
-            elements.emergencyBtn.addEventListener('click', () => {
-                state.emergencyStop ? releaseEmergencyStop() : triggerEmergencyStop();
-            });
+        // Special command button — toggle DIFF ↔ 360°
+        if (elements.btnSpecialCmd) {
+            elements.btnSpecialCmd.addEventListener('click', (e) => { e.preventDefault(); toggleSpecialCommand(); });
         }
 
-        if (elements.helpToggle && elements.helpContent) {
-            elements.helpToggle.addEventListener('click', () => {
-                elements.helpToggle.classList.toggle('open');
-                elements.helpContent.classList.toggle('open');
+        // Speed mode toggle
+        if (elements.btnSpeedMode) elements.btnSpeedMode.addEventListener('click', toggleSpeedMode);
+
+        if (elements.styleToggle) {
+            elements.styleToggle.addEventListener('change', (e) => {
+                const isSplit = e.target.checked;
+                state.joystickStyle = isSplit ? 'split' : 'unified';
+                if (elements.joystickSplit) {
+                    elements.joystickSplit.style.display = isSplit ? 'flex' : 'none';
+                }
+                if (elements.joystickUnified) {
+                    elements.joystickUnified.style.display = isSplit ? 'none' : 'flex';
+                }
+                // Send stop command just in case any drags are active
+                sendVelocity(0, 0);
+                resetThumbs();
             });
         }
-
-        document.addEventListener('keydown', handleKeyDown);
-        document.addEventListener('keyup', handleKeyUp);
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && !state.connected) connectWebSocket();
@@ -475,21 +603,38 @@
         if (elements.joystickLinear && elements.thumbLinear) {
             setupJoystick(
                 elements.joystickLinear, elements.thumbLinear, 'vertical',
-                (val) => { state.targetLinearX = val * CONFIG.MAX_LINEAR_SPEED; }
+                (val) => {
+                    const maxLin = getMaxLinear();
+                    sendVelocity(val * maxLin, state.angularZ);
+                }
             );
         }
         if (elements.joystickAngular && elements.thumbAngular) {
             setupJoystick(
                 elements.joystickAngular, elements.thumbAngular, 'horizontal',
-                (val) => { state.targetAngularZ = val * CONFIG.MAX_ANGULAR_SPEED; }
+                (val) => {
+                    sendVelocity(state.linearX, val * CONFIG.MAX_ANGULAR_SPEED);
+                }
             );
         }
 
-        startRampingLoop();
+        if (elements.joystick2D && elements.thumb2D) {
+            setup2DJoystick(
+                elements.joystick2D, elements.thumb2D,
+                (linVal, angVal) => {
+                    const maxLin = getMaxLinear();
+                    sendVelocity(linVal * maxLin, angVal * CONFIG.MAX_ANGULAR_SPEED);
+                }
+            );
+        }
+
         connectWebSocket();
 
+        // Start DIFF mode by default
+        updateSpecialCmdUI();
+        startSpecialInterval();
         updateModeDisplay('manual');
-        updateConnectionStatus('disconnected');
+        updateSpeedModeDisplay();
 
         console.log('✅ Rover Control System ready');
         console.log('📡 Connecting to:', CONFIG.WS_URL);

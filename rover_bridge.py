@@ -1,29 +1,4 @@
 #!/usr/bin/env python3
-"""
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                    MARCH ROVER - ROS2 WebSocket Bridge                       ║
-║                          Rover Control System                                ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-
-Hey there, fellow roboticist! 👋
-
-This module is the heart of the rover control system - it bridges your web browser
-to your rover through the magic of WebSockets and ROS2. Think of it as the 
-translator that helps your phone/laptop talk to your rover!
-
-What this little guy does:
-    🌐 WebSocket Server: Real-time two-way communication (like texting, but for robots!)
-    🚀 ROS2 Publisher: Sends velocity commands to /cmd_vel (go forward, turn, etc.)
-    📡 Telemetry: Keeps you updated on what the rover is doing
-    🎮 Mode Control: Switch between manual (safe) and auto (let's go!) modes
-    🛑 Emergency Stop: Because safety first, always!
-
-Author: Abiral Saba (@Abiralsaba)
-Project: MARCH ROVER Controller
-License: MIT - Feel free to use, modify, and share!
-Compatible with: ROS2 Jazzy (Humble should work too with minor tweaks)
-Created with ❤️ for the robotics community
-"""
 
 import asyncio
 import json
@@ -45,59 +20,38 @@ from geometry_msgs.msg import Twist
 
 
 class ControlMode(Enum):
-    """Enumeration for rover control modes."""
     MANUAL = "manual"
     AUTO = "auto"
 
 
 @dataclass
 class RoverState:
-    """
-    Dataclass to hold the current state of the rover.
-    
-    Attributes:
-        linear_x: Current linear velocity (m/s)
-        angular_z: Current angular velocity (rad/s)
-        mode: Current control mode (manual/auto)
-        emergency_stop: Whether emergency stop is active
-        connected_clients: Set of connected WebSocket clients
-    """
+ 
     linear_x: float = 0.0
+    angular_y: float = 0.0
     angular_z: float = 0.0
     mode: ControlMode = ControlMode.MANUAL
-    emergency_stop: bool = False
     connected_clients: Set[WebSocketServerProtocol] = field(default_factory=set)
 
 
 class RoverBridgeNode(Node):
-    """
-    ROS2 Node that bridges WebSocket commands to ROS2 /cmd_vel topic.
-    
-    This node:
-    - Publishes Twist messages to /cmd_vel
-    - Subscribes to /cmd_vel for telemetry feedback
-    - Manages rover state and mode switching
-    """
+    # Bridges WS commands to ROS2
+    # - /cmd_vel publishing
+    # - Gets telemetry feedback
     
     def __init__(self, state: RoverState):
-        """
-        Initialize the RoverBridge ROS2 node.
         
-        Args:
-            state: Shared RoverState object for state management
-        """
         super().__init__('rover_bridge')
         
         self.state = state
         
-        # Publisher for velocity commands
         self.cmd_vel_publisher = self.create_publisher(
             Twist,
             '/cmd_vel',
-            10  # QoS depth
+            10  # qos
         )
         
-        # Subscriber for telemetry feedback
+        # hook up telemetry feedback
         self.cmd_vel_subscriber = self.create_subscription(
             Twist,
             '/cmd_vel',
@@ -105,46 +59,23 @@ class RoverBridgeNode(Node):
             10
         )
         
-        # Timer for periodic telemetry broadcast (10 Hz)
+        # 10 Hz broadcast
         self.telemetry_timer = self.create_timer(0.1, self.broadcast_telemetry)
         
-        # Log initialization
-        self.get_logger().info('🚀 Rover Bridge Node initialized')
-        self.get_logger().info('📡 Publishing to /cmd_vel')
-        self.get_logger().info('📥 Subscribing to /cmd_vel for telemetry')
+        self.get_logger().info('🚀 Bridge init... pub/sub to /cmd_vel')
     
     def cmd_vel_callback(self, msg: Twist) -> None:
-        """
-        Callback for /cmd_vel subscription.
-        Updates the state with current velocity values.
-        
-        Args:
-            msg: Incoming Twist message
-        """
+        # keep state synced with actual velocities
         self.state.linear_x = msg.linear.x
+        self.state.angular_y = msg.angular.y
         self.state.angular_z = msg.angular.z
     
     def publish_velocity(self, linear: float, angular: float) -> None:
-        """
-        Publish velocity command to /cmd_vel.
-        
-        Args:
-            linear: Linear velocity (m/s), positive = forward
-            angular: Angular velocity (rad/s), positive = left turn
-        """
-        # Check for emergency stop
-        if self.state.emergency_stop:
-            linear = 0.0
-            angular = 0.0
-        
-        # Check for manual mode (disarmed) - no movement allowed
+        # kill motors when disarmed
         if self.state.mode == ControlMode.MANUAL:
             linear = 0.0
             angular = 0.0
-        # AUTO mode (armed) - allow movement
-        # (no additional blocking needed)
         
-        # Create and publish Twist message
         twist = Twist()
         twist.linear.x = float(linear)
         twist.linear.y = 0.0
@@ -157,36 +88,64 @@ class RoverBridgeNode(Node):
         
         # Update state for immediate feedback
         self.state.linear_x = twist.linear.x
+        self.state.angular_y = twist.angular.y
         self.state.angular_z = twist.angular.z
         
         self.get_logger().debug(
             f'Published: linear={linear:.2f}, angular={angular:.2f}'
         )
     
+    def publish_360_rotation(self) -> None:
+        # Hack: hijack angular.y for 360 mode signal
+        if self.state.mode == ControlMode.MANUAL:
+            return
+        
+        twist = Twist()
+        twist.linear.x = 0.0
+        twist.linear.y = 0.0
+        twist.linear.z = 0.0
+        twist.angular.x = 0.0
+        twist.angular.y = 200.0  # 360 rotation signal
+        twist.angular.z = 0.0
+        
+        self.cmd_vel_publisher.publish(twist)
+        
+        # Update state for immediate telemetry feedback
+        self.state.linear_x = 0.0
+        self.state.angular_y = 200.0  # Show 200 on UI
+        self.state.angular_z = 0.0
+        
+        self.get_logger().info('🔄 360 Rotation command sent (angular.y=200)')
+    
+    def publish_differential(self) -> None:
+        # Hack: hijack angular.y for diff UI signal
+        if self.state.mode == ControlMode.MANUAL:
+            return
+        
+        twist = Twist()
+        twist.linear.x = 0.0
+        twist.linear.y = 0.0
+        twist.linear.z = 0.0
+        twist.angular.x = 0.0
+        twist.angular.y = 404.0  # Differential velocity signal
+        twist.angular.z = 0.0
+        
+        self.cmd_vel_publisher.publish(twist)
+        
+        # Update state for immediate telemetry feedback
+        self.state.linear_x = 0.0
+        self.state.angular_y = 404.0  # Show 404 on UI
+        self.state.angular_z = 0.0
+        
+        self.get_logger().info('↔️ Differential velocity command sent (angular.y=404)')
+    
     def stop(self) -> None:
-        """Send stop command (zero velocities)."""
+        # zero out all velocities
         self.publish_velocity(0.0, 0.0)
         self.get_logger().info('🛑 STOP command sent')
     
-    def emergency_stop_activate(self) -> None:
-        """Activate emergency stop."""
-        self.state.emergency_stop = True
-        self.state.mode = ControlMode.MANUAL
-        self.stop()
-        self.get_logger().warn('🚨 EMERGENCY STOP ACTIVATED')
-    
-    def emergency_stop_release(self) -> None:
-        """Release emergency stop."""
-        self.state.emergency_stop = False
-        self.get_logger().info('✅ Emergency stop released')
-    
     def set_mode(self, mode: str) -> None:
-        """
-        Set the control mode.
-        
-        Args:
-            mode: 'manual' or 'auto'
-        """
+        # manual or auto - stop if dropping to manual
         try:
             self.state.mode = ControlMode(mode)
             if self.state.mode == ControlMode.MANUAL:
@@ -196,38 +155,22 @@ class RoverBridgeNode(Node):
             self.get_logger().error(f'Invalid mode: {mode}')
     
     def broadcast_telemetry(self) -> None:
-        """
-        Periodic callback to broadcast telemetry to all connected clients.
-        This is called by the ROS2 timer.
-        """
-        # Telemetry broadcast is handled asynchronously in the WebSocket server
+        # handled asynchronously in the ws server
         pass
     
     def get_telemetry(self) -> Dict:
-        """
-        Get current telemetry data as a dictionary.
-        
-        Returns:
-            Dictionary containing current rover state
-        """
+        # package current state for the frontend
         return {
             "linear_x": round(self.state.linear_x, 2),
+            "angular_y": round(self.state.angular_y, 2),
             "angular_z": round(self.state.angular_z, 2),
             "mode": self.state.mode.value,
-            "emergency_stop": self.state.emergency_stop,
             "connected_clients": len(self.state.connected_clients)
         }
 
 
 class WebSocketServer:
-    """
-    WebSocket server for handling client connections and commands.
-    
-    Handles:
-    - Client connection/disconnection
-    - Command parsing and routing
-    - Telemetry broadcasting
-    """
+    # Handles ws clients, routing commands, and spamming telemetry
     
     def __init__(self, node: RoverBridgeNode, host: str = "0.0.0.0", port: int = 8765):
         """
@@ -282,8 +225,9 @@ class WebSocketServer:
         Expected message formats:
         - Velocity command: {"linear": float, "angular": float}
         - Mode switch: {"mode": "manual" | "auto"}
-        - Emergency stop: {"emergency_stop": true | false}
         - Stop command: {"stop": true}
+        - 360 Rotation: {"rotate_360": true}
+        - Differential: {"differential": true}
         
         Args:
             websocket: The WebSocket connection
@@ -298,16 +242,25 @@ class WebSocketServer:
                 angular = float(data["angular"])
                 self.node.publish_velocity(linear, angular)
             
+            # Handle 360 rotation command
+            if "rotate_360" in data:
+                if data["rotate_360"]:
+                    self.node.publish_360_rotation()
+                else:
+                    self.node.stop()
+                    self.node.get_logger().info('🔄 360 Rotation stopped (button released)')
+            
+            # Handle differential velocity command
+            if "differential" in data:
+                if data["differential"]:
+                    self.node.publish_differential()
+                else:
+                    self.node.stop()
+                    self.node.get_logger().info('↔️ Differential stopped (button released)')
+            
             # Handle mode switch
             if "mode" in data:
                 self.node.set_mode(data["mode"])
-            
-            # Handle emergency stop
-            if "emergency_stop" in data:
-                if data["emergency_stop"]:
-                    self.node.emergency_stop_activate()
-                else:
-                    self.node.emergency_stop_release()
             
             # Handle stop command
             if "stop" in data and data["stop"]:

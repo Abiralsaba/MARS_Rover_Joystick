@@ -16,7 +16,7 @@
         href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
 
     <!-- Stylesheet -->
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=1772917835">
 </head>
 
 <body>
@@ -24,40 +24,61 @@
         <!-- Header -->
         <header class="header">
             <div class="header-content">
-                <h1 class="title">MARCH ROVER</h1>
-                <div class="connection-status" id="connection-status">
-                    <span class="status-dot"></span>
-                    <span class="status-text">Disconnected</span>
-                </div>
+                <h1 class="title">ROVER MOBILE CONTROLLER</h1>
             </div>
         </header>
 
         <!-- Main content -->
         <main class="main-content">
-            <!-- Mode Indicator -->
-            <section class="mode-panel">
-                <div class="mode-indicator" id="mode-indicator">
-                    <span class="mode-icon">⏹</span>
-                    <span class="mode-text">DISARMED</span>
+
+
+            <!-- Dashboard: Telemetry + Controls side by side -->
+            <section class="dashboard-split" aria-label="Dashboard">
+                <div class="telemetry-panel">
+                    <div class="telemetry-row">
+                        <span class="telemetry-label">linear: x</span>
+                        <span class="telemetry-value" id="linear-x">0.00</span>
+                    </div>
+                    <div class="telemetry-row">
+                        <span class="telemetry-label">angular: y</span>
+                        <span class="telemetry-value" id="angular-y">0.00</span>
+                    </div>
+                    <div class="telemetry-row">
+                        <span class="telemetry-label">angular: z</span>
+                        <span class="telemetry-value" id="angular-z">0.00</span>
+                    </div>
+                </div>
+                <div class="controls-panel">
+                    <button class="special-btn btn-special-cmd" id="btn-special-cmd"
+                        aria-label="Special Command Toggle">
+                        <span class="special-btn-icon">↔️</span>
+                        <span class="special-btn-text">DIFF</span>
+                    </button>
+                    <button class="special-btn btn-speed-mode" id="btn-speed-mode" aria-label="Toggle Speed Mode">
+                        <span class="special-btn-icon">🐢</span>
+                        <span class="speed-mode-text">SLOW MODE</span>
+                    </button>
                 </div>
             </section>
 
-            <!-- Telemetry Display Panel -->
-            <section class="telemetry-panel" aria-label="Telemetry Display">
-                <div class="telemetry-row">
-                    <span class="telemetry-label">linear: x</span>
-                    <span class="telemetry-value" id="linear-x">0.00</span>
-                </div>
-                <div class="telemetry-row">
-                    <span class="telemetry-label">angular: z</span>
-                    <span class="telemetry-value" id="angular-z">0.00</span>
-                </div>
+            <!-- Joystick Style Toggle + Armed/Disarmed -->
+            <section class="style-toggle-panel">
+                <button class="mode-btn compact" id="btn-mode" aria-label="Toggle Armed/Disarmed Mode">
+                    <span class="mode-btn-text">DISARMED</span>
+                </button>
+                <span class="style-toggle-label">UNIFIED</span>
+                <label class="switch">
+                    <input type="checkbox" id="joystick-style-toggle">
+                    <span class="slider round"></span>
+                </label>
+                <span class="style-toggle-label">SPLIT</span>
             </section>
 
             <!-- Joystick Controls -->
             <section class="joystick-panel" aria-label="Joystick Controls">
-                <div class="joystick-container">
-                    <!-- Linear X Joystick (Vertical: Up/Down) -->
+
+                <!-- SPLIT JOYSTICKS -->
+                <div class="joystick-container split-view" id="joystick-split" style="display: none;">
                     <div class="joystick-wrapper">
                         <span class="joystick-label">LINEAR X</span>
                         <div class="joystick-track vertical" id="joystick-linear">
@@ -70,7 +91,6 @@
                         </div>
                     </div>
 
-                    <!-- Angular Z Joystick (Horizontal: Left/Right) -->
                     <div class="joystick-wrapper">
                         <span class="joystick-label">ANGULAR Z</span>
                         <div class="joystick-track horizontal" id="joystick-angular">
@@ -83,45 +103,36 @@
                         </div>
                     </div>
                 </div>
-            </section>
 
-            <!-- Mode Toggle Button -->
-            <section class="action-panel">
-                <button class="mode-btn" id="btn-mode" aria-label="Toggle Armed/Disarmed Mode">
-                    <span class="mode-btn-text">DISARMED</span>
-                </button>
-            </section>
-
-            <!-- Emergency Stop -->
-            <section class="emergency-section">
-                <button class="emergency-btn" id="btn-emergency" aria-label="Emergency Stop">
-                    <span class="emergency-icon">🛑</span>
-                    <span class="emergency-text">EMERGENCY STOP</span>
-                </button>
-            </section>
-
-            <!-- Keyboard Help -->
-            <section class="keyboard-help">
-                <div class="help-toggle" id="help-toggle">
-                    <span>Keyboard Shortcuts</span>
-                    <svg class="help-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M6 9l6 6 6-6" />
-                    </svg>
+                <!-- UNIFIED JOYSTICK -->
+                <div class="joystick-container unified-view" id="joystick-unified">
+                    <div class="unified-wrapper">
+                        <span class="joystick-label">LINEAR X + ANGULAR Z</span>
+                        <div class="unified-track-area">
+                            <span class="unified-hint hint-top">FWD</span>
+                            <span class="unified-hint hint-bottom">BWD</span>
+                            <span class="unified-hint hint-left">LEFT</span>
+                            <span class="unified-hint hint-right">RIGHT</span>
+                            <div class="joystick-track unified" id="joystick-2d">
+                                <div class="joystick-crosshair-x"></div>
+                                <div class="joystick-crosshair-y"></div>
+                                <div class="joystick-center-dot"></div>
+                                <div class="joystick-thumb round-thumb" id="thumb-2d"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="help-content" id="help-content">
-                    <div class="key-group"><kbd>W</kbd> / <kbd>↑</kbd> Forward</div>
-                    <div class="key-group"><kbd>S</kbd> / <kbd>↓</kbd> Backward</div>
-                    <div class="key-group"><kbd>A</kbd> / <kbd>←</kbd> Left</div>
-                    <div class="key-group"><kbd>D</kbd> / <kbd>→</kbd> Right</div>
-                    <div class="key-group"><kbd>Space</kbd> Toggle Mode</div>
-                    <div class="key-group"><kbd>Esc</kbd> E-Stop</div>
-                </div>
+
             </section>
+
+
+
+
         </main>
     </div>
 
     <!-- JavaScript -->
-    <script src="app.js"></script>
+    <script src="app.js?v=1772917835"></script>
 </body>
 
 </html>
