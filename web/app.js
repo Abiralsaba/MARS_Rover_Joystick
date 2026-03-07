@@ -6,8 +6,9 @@
     // basic setup
     const CONFIG = {
         ROSBRIDGE_URL: `ws://${window.location.hostname || 'localhost'}:9090`,
-        RECONNECT_INTERVAL: 3000,
+        RECONNECT_INTERVAL: 2000,
         MAX_ANGULAR_SPEED: 0.49,
+        PUBLISH_RATE_MS: 100,  // Continuous publish at 10Hz while joystick held
         // fast/slow mode caps
         SLOW_MAX_LINEAR: 0.5,
         FAST_MAX_LINEAR: 1.0,
@@ -27,6 +28,7 @@
         cmdVelPub: null,
         cmdVelSub: null,
         reconnectTimer: null,
+        continuousPublishTimer: null,
         dragging: { linear: false, angular: false }
     };
 
@@ -109,11 +111,13 @@
         state.connected = true;
         clearTimeout(state.reconnectTimer);
         setupRosTopics();
+        document.title = '✅ CONNECTED - Rover Control';
     }
 
     function handleWebSocketClose() {
         console.log('🔌 Disconnected from rosbridge');
         state.connected = false;
+        document.title = '❌ DISCONNECTED - Rover Control';
         scheduleReconnect();
     }
 
@@ -124,7 +128,11 @@
 
     function handleTelemetryMessage(msg) {
         updateTelemetry('linear', msg.linear.x);
-        updateTelemetry('angularY', msg.angular.y);
+        // Don't update angular Y from subscription when special mode is active
+        // (it sends 404/200 codes that would cause UI flicker)
+        if (!specialCmdInterval) {
+            updateTelemetry('angularY', msg.angular.y);
+        }
         updateTelemetry('angularZ', msg.angular.z);
     }
 
@@ -211,6 +219,25 @@
         updateTelemetry('angularZ', state.angularZ);
     }
 
+    // Continuous publish: keeps sending last velocity while joystick is held
+    function startContinuousPublish() {
+        if (state.continuousPublishTimer) return;
+        state.continuousPublishTimer = setInterval(() => {
+            if (state.dragging.linear || state.dragging.angular) {
+                publishTwist(state.linearX, 0.0, state.angularZ);
+            } else {
+                stopContinuousPublish();
+            }
+        }, CONFIG.PUBLISH_RATE_MS);
+    }
+
+    function stopContinuousPublish() {
+        if (state.continuousPublishTimer) {
+            clearInterval(state.continuousPublishTimer);
+            state.continuousPublishTimer = null;
+        }
+    }
+
     // --- Special Modes ---
 
     // toggle state: diff -> 360
@@ -219,11 +246,11 @@
 
     function sendSpecialCommand() {
         if (specialCmdMode === 'diff') {
-            // Hijacks angular.y in Twist for UI
-            publishTwist(0.0, 404.0, 0.0);
+            // Hijacks angular.y in Twist for UI, preserve joystick values
+            publishTwist(state.linearX, 404.0, state.angularZ);
         } else {
-            // Hijacks angular.y in Twist for UI
-            publishTwist(0.0, 200.0, 0.0);
+            // Hijacks angular.y in Twist for UI, preserve joystick values
+            publishTwist(state.linearX, 200.0, state.angularZ);
         }
     }
 
@@ -356,6 +383,7 @@
             state.dragging[axis === 'vertical' ? 'linear' : 'angular'] = true;
             thumbEl.classList.add('active');
             trackEl.classList.add('active');
+            startContinuousPublish();
             move(clientX, clientY);
         }
 
@@ -373,6 +401,7 @@
             state.dragging[axis === 'vertical' ? 'linear' : 'angular'] = false;
             thumbEl.classList.remove('active');
             trackEl.classList.remove('active');
+            stopContinuousPublish();
             // Snap thumb back to center
             thumbEl.style.transition = `top ${CONFIG.SNAP_BACK_MS}ms ease, left ${CONFIG.SNAP_BACK_MS}ms ease`;
             setThumbPosition(thumbEl, trackEl, 0, axis);
@@ -450,6 +479,7 @@
             state.dragging.angular = true;
             thumbEl.classList.add('active');
             trackEl.classList.add('active');
+            startContinuousPublish();
             move(clientX, clientY);
         }
 
@@ -503,6 +533,7 @@
             state.dragging.angular = false;
             thumbEl.classList.remove('active');
             trackEl.classList.remove('active');
+            stopContinuousPublish();
 
             // Snap center
             thumbEl.style.transition = `top ${CONFIG.SNAP_BACK_MS}ms ease, left ${CONFIG.SNAP_BACK_MS}ms ease`;
