@@ -213,7 +213,7 @@ body {
 
 .telemetry-value {
     font-family: var(--font-mono);
-    font-size: 0.65rem;
+    font-size: 1.75rem;
     font-weight: 600;
     color: var(--color-accent);
     text-shadow: 0 0 20px var(--color-accent-glow);
@@ -616,8 +616,6 @@ input:checked+.slider:before {
 }
 
 /* ─── 360 button ──────────────────────────────────────────────────────── */
-
-/* ─── 360 button ──────────────────────────────────────────────────────── */
 .btn-360 {
     border-color: #8b5cf6;
 }
@@ -771,7 +769,7 @@ input:checked+.slider:before {
 
 @media (min-width: 400px) {
     .telemetry-value {
-        font-size: 0.65rem;
+        font-size: 2rem;
     }
 
     .joystick-track.vertical {
@@ -807,7 +805,7 @@ input:checked+.slider:before {
     }
 
     .telemetry-value {
-        font-size: 0.65rem;
+        font-size: 1.5rem;
     }
 
     .joystick-track.vertical {
@@ -820,84 +818,95 @@ input:checked+.slider:before {
     }
 }
 
-/* ─── Landscape Fullscreen Joystick Mode ─────────────────────────────── */
+/* ─── Landscape Mode ───────────────────────────────────────────────────── */
 
-@media (orientation: landscape) and (max-height: 600px) {
+@media (orientation: landscape) and (max-height: 500px) {
 
-    /* No scroll — joystick only */
-    body {
-        overflow: hidden;
-        height: 100vh;
-    }
-
-    /* Hide everything except the joystick */
-    .header,
-    .dashboard-split {
-        display: none !important;
-    }
-
-    /* Container fills entire viewport */
+    /* Remove container width limit and fill the screen */
     .app-container {
         max-width: 100%;
-        width: 100vw;
-        height: 100vh;
+        width: 100%;
         min-height: 100vh;
-        padding: 0;
-        margin: 0;
-        overflow: hidden;
-    }
-
-    .main-content {
-        height: 100vh;
+        padding: var(--spacing-sm) var(--spacing-md);
         gap: 0;
-        padding: 0;
     }
 
-    /* ── Style toggle panel → floating ARM button overlay ───────── */
-    .style-toggle-panel {
-        position: fixed;
-        top: 8px;
-        left: 8px;
-        z-index: 200;
-        margin: 0;
-        padding: 0;
-        gap: 8px;
+    /* Compact header */
+    .header {
+        margin-bottom: var(--spacing-sm);
     }
 
-    /* Hide the split/unified toggle in landscape */
-    .style-toggle-panel .switch,
-    .style-toggle-label {
-        display: none !important;
+    .title {
+        font-size: 1rem;
     }
 
-    /* Compact floating ARM button */
-    .style-toggle-panel .mode-btn.compact {
-        padding: 6px 16px;
-        min-width: auto;
-        font-size: 0.7rem;
-        border-radius: var(--radius-md);
-        opacity: 0.9;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+    /* Shrink mode indicator */
+    .mode-panel {
+        margin-bottom: var(--spacing-xs);
     }
 
-    /* ── Joystick panel fills the entire screen ────────────────── */
+    .mode-indicator {
+        padding: var(--spacing-xs) var(--spacing-md);
+    }
+
+    .mode-text {
+        font-size: 0.75rem;
+    }
+
+    /* Main content fills all available space */
+    .main-content {
+        flex: 1;
+        gap: var(--spacing-sm);
+        flex-direction: column;
+    }
+
+    /* Compact telemetry – side by side, minimal height */
+    .telemetry-panel {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    .telemetry-row {
+        display: inline-flex;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-xs) var(--spacing-sm);
+    }
+
+    .telemetry-panel {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        gap: var(--spacing-lg);
+    }
+
+    .telemetry-panel .telemetry-row:not(:last-child) {
+        border-bottom: none;
+        border-right: 1px solid var(--color-bg-tertiary);
+        padding-right: var(--spacing-lg);
+    }
+
+    .telemetry-value {
+        font-size: 1.25rem;
+    }
+
+    .telemetry-label {
+        font-size: 0.8rem;
+    }
+
+    /* Joystick panel fills remaining space */
     .joystick-panel {
-        position: fixed;
-        inset: 0;
-        border-radius: 0;
-        border: none;
-        padding: 8px;
+        flex: 1;
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 100;
-        background: var(--color-bg-primary);
+        padding: var(--spacing-sm) var(--spacing-md);
+        min-height: 0;
     }
 
     .joystick-container {
+        flex: 1;
         width: 100%;
-        height: 100%;
         display: flex;
+        flex-direction: row;
         align-items: center;
         justify-content: center;
         gap: var(--spacing-xl);
@@ -905,31 +914,30 @@ input:checked+.slider:before {
 
     .joystick-wrapper {
         flex: 1;
-        height: 100%;
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
+        min-height: 0;
     }
 
     .joystick-label {
         font-size: 0.65rem;
-        margin-bottom: 4px;
+        margin-bottom: 2px;
     }
 
-    /* ── Split joystick sizing ─────────────────────────────────── */
-
+    /* Vertical track: fill available height */
     .joystick-track.vertical {
-        width: 86px;
-        height: calc(100vh - 48px);
-        min-height: 140px;
-        max-height: none;
+        width: 72px;
+        height: calc(100vh - 220px);
+        min-height: 100px;
+        max-height: 300px;
     }
 
+    /* Horizontal track: fill available width */
     .joystick-track.horizontal {
-        height: 86px;
-        width: min(55vw, 450px);
-        min-width: 200px;
+        height: 72px;
+        width: min(60vw, 400px);
+        min-width: 180px;
     }
 
     .joystick-hints {
@@ -941,57 +949,40 @@ input:checked+.slider:before {
     }
 
     .horizontal-hints {
-        width: min(55vw, 450px);
-        min-width: 200px;
+        width: min(60vw, 400px);
+        min-width: 180px;
     }
 
-    /* ── Unified joystick sizing — fit within viewport ────────── */
-
-    .unified-wrapper {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+    /* Compact special buttons */
+    .special-buttons {
+        gap: var(--spacing-sm);
     }
 
-    .unified-track-area {
-        position: relative;
-        width: calc(100vh - 32px);
-        height: calc(100vh - 32px);
-        max-width: calc(100vw - 32px);
-        max-height: calc(100vh - 32px);
+    .special-btn {
+        padding: var(--spacing-sm) var(--spacing-md);
+        min-width: 90px;
+        min-height: 56px;
+        font-size: 0.78rem;
     }
 
-    .joystick-track.unified {
-        width: calc(100vh - 80px);
-        height: calc(100vh - 80px);
-        max-width: calc(100vw - 80px);
-        max-height: calc(100vh - 80px);
+    .special-btn-icon {
+        font-size: 1.1rem;
     }
 
-    .unified-view .joystick-label {
-        display: none;
+    /* Compact buttons */
+    .action-panel {
+        margin-top: 0;
     }
 
-    .joystick-thumb.round-thumb {
-        width: 76px;
-        height: 76px;
-    }
-
-    /* Larger split thumbs for easier grip */
-    .joystick-track.vertical .joystick-thumb {
-        height: 36px;
-    }
-
-    .joystick-track.horizontal .joystick-thumb {
-        width: 36px;
+    .mode-btn {
+        padding: var(--spacing-sm) var(--spacing-lg);
+        min-width: 140px;
+        font-size: 0.85rem;
     }
 }
 
-/* ─── Landscape for taller devices (small tablets) ───────────────────── */
-
-@media (orientation: landscape) and (min-height: 601px) and (max-height: 800px) {
+/* Landscape for slightly taller devices (tablets in landscape, etc.) */
+@media (orientation: landscape) and (min-height: 501px) and (max-height: 800px) {
     .app-container {
         max-width: 90%;
     }
