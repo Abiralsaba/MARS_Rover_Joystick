@@ -767,6 +767,7 @@ input:checked+.slider:before {
 
 /* ─── Responsive ───────────────────────────────────────────────────────── */
 
+
 @media (min-width: 400px) {
     .telemetry-value {
         font-size: 1rem;
@@ -818,78 +819,51 @@ input:checked+.slider:before {
     }
 }
 
-/* ─── Landscape Mode ───────────────────────────────────────────────────── */
+/* ─── Mobile Landscape: Joystick + Armed/Disarmed Only ─────────────────── */
 
 @media (orientation: landscape) and (max-height: 500px) {
 
-    /* Remove container width limit and fill the screen */
-    .app-container {
-        max-width: 100%;
-        width: 100%;
-        min-height: 100vh;
-        padding: var(--spacing-sm) var(--spacing-md);
+    /* Hide everything except joystick and armed/disarmed button */
+    .header,
+    .dashboard-split {
+        display: none !important;
+    }
+
+    /* Keep the armed/disarmed button, hide the toggle switch and labels */
+    .style-toggle-panel {
         gap: 0;
-    }
-
-    /* Compact header */
-    .header {
-        margin-bottom: var(--spacing-sm);
-    }
-
-    .title {
-        font-size: 1rem;
-    }
-
-    /* Shrink mode indicator */
-    .mode-panel {
         margin-bottom: var(--spacing-xs);
     }
 
-    .mode-indicator {
-        padding: var(--spacing-xs) var(--spacing-md);
+    .style-toggle-panel .style-toggle-label,
+    .style-toggle-panel .switch {
+        display: none !important;
     }
 
-    .mode-text {
-        font-size: 0.75rem;
+    .style-toggle-panel .mode-btn {
+        padding: var(--spacing-xs) var(--spacing-lg);
+        min-width: 130px;
+        font-size: 0.8rem;
+    }
+
+    /* Full-screen layout */
+    body {
+        overflow: hidden;
+    }
+
+    .app-container {
+        max-width: 100%;
+        width: 100%;
+        height: 100vh;
+        padding: var(--spacing-xs) var(--spacing-md);
+        gap: 0;
     }
 
     /* Main content fills all available space */
     .main-content {
         flex: 1;
-        gap: var(--spacing-sm);
-        flex-direction: column;
-    }
-
-    /* Compact telemetry – side by side, minimal height */
-    .telemetry-panel {
-        padding: var(--spacing-sm) var(--spacing-md);
-    }
-
-    .telemetry-row {
-        display: inline-flex;
-        gap: var(--spacing-sm);
-        padding: var(--spacing-xs) var(--spacing-sm);
-    }
-
-    .telemetry-panel {
-        display: flex;
-        flex-direction: row;
+        gap: var(--spacing-xs);
         justify-content: center;
-        gap: var(--spacing-lg);
-    }
-
-    .telemetry-panel .telemetry-row:not(:last-child) {
-        border-bottom: none;
-        border-right: 1px solid var(--color-bg-tertiary);
-        padding-right: var(--spacing-lg);
-    }
-
-    .telemetry-value {
-        font-size: 0.75rem;
-    }
-
-    .telemetry-label {
-        font-size: 0.65rem;
     }
 
     /* Joystick panel fills remaining space */
@@ -898,8 +872,10 @@ input:checked+.slider:before {
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: var(--spacing-sm) var(--spacing-md);
+        padding: var(--spacing-xs) var(--spacing-md);
         min-height: 0;
+        border: none;
+        background: transparent;
     }
 
     .joystick-container {
@@ -925,10 +901,21 @@ input:checked+.slider:before {
         margin-bottom: 2px;
     }
 
+    /* Unified joystick: fill the landscape height */
+    .unified-track-area {
+        width: min(80vh, 80vw);
+        height: min(80vh, 80vw);
+    }
+
+    .joystick-track.unified {
+        width: min(70vh, 70vw);
+        height: min(70vh, 70vw);
+    }
+
     /* Vertical track: fill available height */
     .joystick-track.vertical {
         width: 72px;
-        height: calc(100vh - 220px);
+        height: calc(100vh - 120px);
         min-height: 100px;
         max-height: 300px;
     }
@@ -951,33 +938,6 @@ input:checked+.slider:before {
     .horizontal-hints {
         width: min(60vw, 400px);
         min-width: 180px;
-    }
-
-    /* Compact special buttons */
-    .special-buttons {
-        gap: var(--spacing-sm);
-    }
-
-    .special-btn {
-        padding: var(--spacing-sm) var(--spacing-md);
-        min-width: 90px;
-        min-height: 56px;
-        font-size: 0.78rem;
-    }
-
-    .special-btn-icon {
-        font-size: 1.1rem;
-    }
-
-    /* Compact buttons */
-    .action-panel {
-        margin-top: 0;
-    }
-
-    .mode-btn {
-        padding: var(--spacing-sm) var(--spacing-lg);
-        min-width: 140px;
-        font-size: 0.85rem;
     }
 }
 
