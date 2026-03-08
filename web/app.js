@@ -238,6 +238,43 @@
         }
     }
 
+    // Send a burst of stop commands to ensure at least one gets through over WiFi
+    let safetyStopTimer = null;
+    let stopBurstGeneration = 0; // increments each new burst; old bursts check and bail out
+    function sendStopBurst() {
+        // Cancel any previous burst
+        stopBurstGeneration++;
+        const myGen = stopBurstGeneration;
+
+        // Immediately send stop
+        publishTwist(0.0, 0.0, 0.0);
+
+        // Send additional stop commands spaced out to survive packet loss
+        const BURST_COUNT = 4;
+        const BURST_INTERVAL = 60; // ms
+        for (let i = 1; i <= BURST_COUNT; i++) {
+            setTimeout(() => {
+                // Bail if a new drag started or a newer burst replaced us
+                if (myGen !== stopBurstGeneration) return;
+                if (state.dragging.linear || state.dragging.angular) return;
+                publishTwist(0.0, 0.0, 0.0);
+            }, i * BURST_INTERVAL);
+        }
+
+        // Safety watchdog: keep sending zero for a short period after release
+        if (safetyStopTimer) clearInterval(safetyStopTimer);
+        let safetyTicks = 0;
+        safetyStopTimer = setInterval(() => {
+            safetyTicks++;
+            if (myGen !== stopBurstGeneration || state.dragging.linear || state.dragging.angular || safetyTicks > 5) {
+                clearInterval(safetyStopTimer);
+                safetyStopTimer = null;
+                return;
+            }
+            publishTwist(0.0, 0.0, 0.0);
+        }, CONFIG.PUBLISH_RATE_MS);
+    }
+
     // --- Special Modes ---
 
     // toggle state: diff -> 360
@@ -407,12 +444,13 @@
             setThumbPosition(thumbEl, trackEl, 0, axis);
             setTimeout(() => { thumbEl.style.transition = ''; }, CONFIG.SNAP_BACK_MS);
             onUpdate(0);
-            // Instantly send zero when released
+            // Send burst of stop commands to survive packet loss
             if (axis === 'vertical') {
-                sendVelocity(0, state.angularZ);
+                state.linearX = 0;
             } else {
-                sendVelocity(state.linearX, 0);
+                state.angularZ = 0;
             }
+            sendStopBurst();
         }
 
         // Mouse
@@ -542,7 +580,9 @@
             setTimeout(() => { thumbEl.style.transition = ''; }, CONFIG.SNAP_BACK_MS);
 
             onUpdate(0, 0);
-            sendVelocity(0, 0);
+            state.linearX = 0;
+            state.angularZ = 0;
+            sendStopBurst();
         }
 
         trackEl.addEventListener('mousedown', (e) => { e.preventDefault(); start(e.clientX, e.clientY); });
@@ -696,7 +736,51 @@
         document.addEventListener('keyup', handleKeyUp);
 
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && !state.connected) connectWebSocket();
+            if (document.visibilityState === 'visible' && !state.connected) {
+                connectWebSocket();
+            } else if (document.visibilityState === 'hidden') {
+                // Page hidden (e.g. switched tabs, locked phone) — force stop
+                state.linearX = 0;
+                state.angularZ = 0;
+                state.dragging.linear = false;
+                state.dragging.angular = false;
+                stopContinuousPublish();
+                sendStopBurst();
+                resetThumbs();
+            }
+        });
+
+        // When the browser window loses focus, force stop
+        window.addEventListener('blur', () => {
+            if (state.dragging.linear || state.dragging.angular) {
+                state.linearX = 0;
+                state.angularZ = 0;
+                state.dragging.linear = false;
+                state.dragging.angular = false;
+                stopContinuousPublish();
+                sendStopBurst();
+                resetThumbs();
+            }
+        });
+
+        // When device orientation changes, stop any active drag
+        const landscapeQuery = window.matchMedia('(orientation: landscape) and (max-height: 600px)');
+        function handleOrientationChange() {
+            // Only intervene if actually dragging
+            if (state.dragging.linear || state.dragging.angular) {
+                state.dragging.linear = false;
+                state.dragging.angular = false;
+                stopContinuousPublish();
+                state.linearX = 0;
+                state.angularZ = 0;
+                sendStopBurst();
+                resetThumbs();
+            }
+        }
+        landscapeQuery.addEventListener('change', handleOrientationChange);
+        // Also listen to the legacy orientationchange event for older browsers
+        window.addEventListener('orientationchange', () => {
+            setTimeout(handleOrientationChange, 100);
         });
 
         window.addEventListener('beforeunload', () => {
