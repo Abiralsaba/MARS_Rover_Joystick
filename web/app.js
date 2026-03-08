@@ -269,12 +269,12 @@
 
         if (specialCmdMode === 'diff') {
             btn.classList.add('held', 'mode-diff');
-            if (iconEl) iconEl.textContent = '↔️';
+            if (iconEl) iconEl.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"/><path d="M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M18 9c0 4-4 6-12 6"/></svg>';
             if (textEl) textEl.textContent = 'DIFF ON';
             updateTelemetry('angularY', 404);
         } else {
             btn.classList.add('held', 'mode-360');
-            if (iconEl) iconEl.textContent = '🔄';
+            if (iconEl) iconEl.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><polyline points="21 3 21 9 15 9"/></svg>';
             if (textEl) textEl.textContent = '360° ON';
             updateTelemetry('angularY', 200);
         }

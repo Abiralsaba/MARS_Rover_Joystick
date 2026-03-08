@@ -207,13 +207,13 @@ body {
 }
 
 .telemetry-label {
-    font-size: 1rem;
+    font-size: 0.75rem;
     color: var(--color-text-secondary);
 }
 
 .telemetry-value {
     font-family: var(--font-mono);
-    font-size: 1.75rem;
+    font-size: 0.85rem;
     font-weight: 600;
     color: var(--color-accent);
     text-shadow: 0 0 20px var(--color-accent-glow);
@@ -769,7 +769,7 @@ input:checked+.slider:before {
 
 @media (min-width: 400px) {
     .telemetry-value {
-        font-size: 2rem;
+        font-size: 1rem;
     }
 
     .joystick-track.vertical {
@@ -805,7 +805,7 @@ input:checked+.slider:before {
     }
 
     .telemetry-value {
-        font-size: 1.5rem;
+        font-size: 0.8rem;
     }
 
     .joystick-track.vertical {
@@ -885,11 +885,11 @@ input:checked+.slider:before {
     }
 
     .telemetry-value {
-        font-size: 1.25rem;
+        font-size: 0.75rem;
     }
 
     .telemetry-label {
-        font-size: 0.8rem;
+        font-size: 0.65rem;
     }
 
     /* Joystick panel fills remaining space */
